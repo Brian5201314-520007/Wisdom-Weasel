@@ -29,7 +29,7 @@
 
 ## 安装与构建
 
-- **直接使用**：从 [Releases](https://github.com/scukeqi/Wisdom-Weasel/releases)下载安装包，安装后与官方小狼毫一样使用。
+- **直接使用**：从 [Releases](https://github.com/Brian5201314-520007/Wisdom-Weasel/releases)下载安装包，安装后与官方小狼毫一样使用。
   - 配置初始拼音输入方案,如：[雾凇拼音](https://github.com/iDvel/rime-ice)等。
   - `weasel.yaml` 中启用并配置 LLM 。
 - **从源码构建**：  
@@ -141,8 +141,15 @@ dev_console:
 
 ## 问题与反馈
 
-- 本分支（LLM 预测功能、构建与配置）相关问题，请在本仓库 [Issues](https://github.com/scukeqi/Wisdom-Weasel/issues) 中反馈。  
+- 本分支（LLM 预测功能、构建与配置）相关问题，请在本仓库 [Issues](https://github.com/Brian5201314-520007/Wisdom-Weasel/issues) 中反馈。  
 - Rime 输入法通用问题（方案、词库、部署等），请反馈至 [Rime 之家](https://github.com/rime/home/issues)。  
 - 欢迎提交 Pull Request。
 
 谢谢使用。
+
+## 覆蓋版安裝（v0.1.0，早期測試版）
+
+本版本以「上游小狼毫 0.17.4 + 覆蓋包」的方式發佈，詳細步驟見 [INSTALL-OVERLAY.md](INSTALL-OVERLAY.md)。
+下載請至 Release 頁面：<https://github.com/Brian5201314-520007/Wisdom-Weasel/releases>
+
+本倉庫為 [scukeqi/Wisdom-Weasel](https://github.com/scukeqi/Wisdom-Weasel) 的分支，LLM 預測功能由原作者開發；上游為 [rime/weasel](https://github.com/rime/weasel)。授權：GPLv3。
