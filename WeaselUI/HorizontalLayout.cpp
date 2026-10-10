@@ -218,7 +218,7 @@ void HorizontalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
         _candidateRects[i].right = width - real_margin_x;
     }
   }
-  _highlightRect = _candidateRects[id];
+  _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
   UpdateStatusIconLayout(&width, &height);
   _contentSize.SetSize(width + offsetX, height + 2 * offsetY);
   _contentRect.SetRect(0, 0, _contentSize.cx, _contentSize.cy);

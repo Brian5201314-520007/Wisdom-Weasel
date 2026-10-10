@@ -173,6 +173,8 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   std::atomic<int> m_llm_inflight{0};
   std::mutex* m_api_mutex = nullptr;
   size_t m_llm_context_words = 50;  // llm/context_words：送給 LLM 的最近上屏次數，1～50
+  int m_llm_highlight = -1;          // AI 窗口的反白位置，-1 = 不反白（只在 API 鎖下存取）
+  bool m_llm_numpad_select = true;   // llm/numpad_select：小鍵盤 1～5 選 AI 候選
   
   // 双击·键检测（用于清空上下文）
   DWORD m_last_grave_key_time;  // 上次·键按下的时间（毫秒）
@@ -181,5 +183,6 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   // LLM预测相关方法
   void _TriggerLLMPrediction(WeaselSessionId ipc_id, const std::wstring& current_input = L"");
   void _ExitLLMPredictionMode(WeaselSessionId ipc_id);
+  BOOL _SelectLLMCandidate(WeaselSessionId ipc_id, EatLine eat, size_t llm_index);
   void _StopLLM();
 };

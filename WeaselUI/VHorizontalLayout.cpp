@@ -226,7 +226,7 @@ void VHorizontalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
     _candidateRects[i].bottom = bottom;
   }
 
-  _highlightRect = _candidateRects[id];
+  _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
   _contentSize.SetSize(width + offsetX, height + offsetY);
 
   // calc page indicator
@@ -448,7 +448,7 @@ void VHorizontalLayout::DoLayoutWithWrap(CDCHandle dc, PDWR pDWR) {
     }
     width = minleft_of_cols[col_cnt] + width_of_cols[col_cnt] - offsetX;
     height = max(height, max_height_of_cols);
-    _highlightRect = _candidateRects[id];
+    _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
   } else
     width -= _style.spacing + offsetX;
   // reposition if not left to right
@@ -494,7 +494,7 @@ void VHorizontalLayout::DoLayoutWithWrap(CDCHandle dc, PDWR pDWR) {
         _candidateCommentRects[i].OffsetRect(
             offset_of_cols[col_of_candidate[i]], 0);
       }
-      _highlightRect = _candidateRects[id];
+      _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
       if (!IsInlinePreedit() && !_context.preedit.str.empty())
         _preeditRect.OffsetRect(
             _candidateRects[0].right + _style.spacing - _preeditRect.left, 0);
@@ -510,7 +510,7 @@ void VHorizontalLayout::DoLayoutWithWrap(CDCHandle dc, PDWR pDWR) {
     width = max(width, _style.min_width);
     height = max(height, _style.min_height);
   }
-  _highlightRect = _candidateRects[id];
+  _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
   UpdateStatusIconLayout(&width, &height);
   _contentSize.SetSize(width + 2 * offsetX, height + offsetY);
   _contentRect.SetRect(0, 0, _contentSize.cx, _contentSize.cy);

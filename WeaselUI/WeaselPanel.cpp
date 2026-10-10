@@ -276,7 +276,11 @@ LRESULT WeaselPanel::OnLeftClickedUp(UINT uMsg,
   ::KillTimer(m_hWnd, AUTOREV_TIMER);
   bar_scale_ = 1.0;
   ptimer = 0;
-  {
+  // highlighted < 0 表示目前沒有反白（AI 候選窗口剛出現時），不做點選
+  if (m_ctx.cinfo.highlighted < 0 ||
+      m_ctx.cinfo.highlighted >= m_candidateCount) {
+    RedrawWindow();
+  } else {
     // select by click
     CRect rect = m_layout->GetCandidateRect((int)m_ctx.cinfo.highlighted);
     if (m_istorepos)
@@ -312,7 +316,8 @@ LRESULT WeaselPanel::OnLeftClickedDown(UINT uMsg,
   point.y = GET_Y_LPARAM(lParam);
 
   // capture
-  if (m_style.click_to_capture) {
+  if (m_style.click_to_capture && m_ctx.cinfo.highlighted >= 0 &&
+      m_ctx.cinfo.highlighted < m_candidateCount) {
     CRect recth = m_layout->GetCandidateRect((int)m_ctx.cinfo.highlighted);
     if (m_istorepos)
       recth.OffsetRect(0, m_offsetys[m_ctx.cinfo.highlighted]);
@@ -812,7 +817,9 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
                      HALF_ALPHA_COLOR(m_style.hilited_candidate_border_color));
     }
     // draw highlighted background and shadow
-    {
+    // （highlighted < 0 表示不反白：AI 候選窗口剛出現時）
+    if (m_ctx.cinfo.highlighted >= 0 &&
+        m_ctx.cinfo.highlighted < m_candidateCount) {
       rect = m_layout->GetHighlightRect();
       bool markSt = bar_scale_ == 1.0 || (!m_style.mark_text.empty());
       IsToRoundStruct rd = m_layout->GetRoundInfo(m_ctx.cinfo.highlighted);
@@ -908,7 +915,9 @@ bool WeaselPanel::_DrawCandidates(CDCHandle& dc, bool back) {
     // draw highlight mark
     {
       if (!m_style.mark_text.empty() &&
-          COLORNOTTRANSPARENT(m_style.hilited_mark_color)) {
+          COLORNOTTRANSPARENT(m_style.hilited_mark_color) &&
+          m_ctx.cinfo.highlighted >= 0 &&
+          m_ctx.cinfo.highlighted < m_candidateCount) {
         CRect rc = m_layout->GetHighlightRect();
         if (m_istorepos)
           rc.OffsetRect(0, m_offsetys[m_ctx.cinfo.highlighted]);

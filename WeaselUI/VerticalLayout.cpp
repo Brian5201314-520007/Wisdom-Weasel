@@ -212,7 +212,7 @@ void weasel::VerticalLayout::DoLayout(CDCHandle dc, PDWR pDWR) {
 
   /* Highlighted Candidate */
 
-  _highlightRect = _candidateRects[id];
+  _highlightRect = (id >= 0 && id < MAX_CANDIDATES_COUNT) ? _candidateRects[id] : CRect();
   // calc page indicator
   if (page_en && candidates_count && !_style.inline_preedit) {
     int _prex = _contentSize.cx - offsetX - real_margin_x +
