@@ -172,6 +172,7 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   std::atomic<bool> m_llm_shutdown{false};
   std::atomic<int> m_llm_inflight{0};
   std::mutex* m_api_mutex = nullptr;
+  size_t m_llm_context_words = 50;  // llm/context_words：送給 LLM 的最近上屏次數，1～50
   
   // 双击·键检测（用于清空上下文）
   DWORD m_last_grave_key_time;  // 上次·键按下的时间（毫秒）

@@ -7,6 +7,7 @@
 #include <FixedWMemStreamBuf.h>
 #include "LlmDiag.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <map>
 #include <regex>
@@ -45,6 +46,51 @@ static bool CommitHasMeaningfulContent(const std::wstring& text) {
   return false;
 }
 
+// LLM 候選清理用：在 IsSeparatorOrPunctuation 之外，再涵蓋全形空白、CJK 標點、全形 ASCII 標點與替換字元。
+// 不修改 IsSeparatorOrPunctuation，因為它決定上屏內容是否觸發 LLM 預測。
+static bool IsLlmCandidateBreakChar(wchar_t ch) {
+  if (IsSeparatorOrPunctuation(ch))
+    return true;
+  if (ch == L'\u3000' || ch == L'\u00A0' || ch == L'\uFFFD')
+    return true;  // 全形空白、不換行空白、替換字元
+  // CJK 符號與標點（排除 々 〆 〇 等屬於文字的字元）
+  if ((ch >= 0x3001 && ch <= 0x3004) || (ch >= 0x3008 && ch <= 0x3011) ||
+      (ch >= 0x3014 && ch <= 0x301F) || ch == 0x3030 || ch == 0x303D)
+    return true;
+  // 全形 ASCII 標點與半形 CJK 標點
+  if ((ch >= 0xFF01 && ch <= 0xFF0F) || (ch >= 0xFF1A && ch <= 0xFF20) ||
+      (ch >= 0xFF3B && ch <= 0xFF40) || (ch >= 0xFF5B && ch <= 0xFF65))
+    return true;
+  // 一般標點（— – … ‘ ’ “ ” • 等）
+  if (ch >= 0x2010 && ch <= 0x2027)
+    return true;
+  return false;
+}
+
+// 清理 LLM 候選：刪除所有空白；略過開頭標點，遇到第一個標點就截斷；丟棄空字串；去除重複並保留原順序。
+static std::vector<std::wstring> CleanLlmCandidates(const std::vector<std::wstring>& raw) {
+  std::vector<std::wstring> out;
+  for (const auto& s : raw) {
+    std::wstring word;
+    for (wchar_t ch : s) {
+      if (ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n' ||
+          ch == L'\u3000' || ch == L'\u00A0')
+        continue;  // 空白一律刪除
+      if (IsLlmCandidateBreakChar(ch)) {
+        if (word.empty())
+          continue;  // 開頭的標點略過
+        break;       // 第一個標點之後全部截掉
+      }
+      word.push_back(ch);
+    }
+    if (word.empty())
+      continue;
+    if (std::find(out.begin(), out.end(), word) != out.end())
+      continue;
+    out.push_back(std::move(word));
+  }
+  return out;
+}
 // 包含 ContextHistory 的完整定义（需要调用其方法）
 #include "../WeaselServer/ContextHistory.h"
 // 包含 LLMProvider 的完整定义
@@ -280,6 +326,16 @@ void RimeWithWeaselHandler::Initialize() {
     } else {
       LlmDiagEnabled().store(false);
     }
+
+    int context_words = 50;
+    if (!rime_api->config_get_int(&config, "llm/context_words", &context_words)) {
+      context_words = 50;
+    }
+    if (context_words < 1)
+      context_words = 1;
+    if (context_words > 50)
+      context_words = 50;  // ContextHistory 最多保存 50 筆
+    m_llm_context_words = static_cast<size_t>(context_words);
 
     rime_api->config_close(&config);
   }
@@ -2220,10 +2276,10 @@ void RimeWithWeaselHandler::_TriggerLLMPrediction(WeaselSessionId ipc_id, const 
 
   LOG(INFO) << "[LLM] Starting LLM prediction, ipc_id=" << ipc_id;
 
-  // 从上下文历史获取最近 50 词作为 LLM 上下文
+  // 从上下文历史获取最近 m_llm_context_words 次上屏作为 LLM 上下文（llm/context_words）
   std::wstring context;
   if (m_context_history) {
-    context = m_context_history->GetRecentContext(50);
+    context = m_context_history->GetRecentContext(m_llm_context_words);
     LOG(INFO) << "[LLM] Context from history, length=" << context.length();
   }
 
@@ -2289,6 +2345,9 @@ void RimeWithWeaselHandler::_TriggerLLMPrediction(WeaselSessionId ipc_id, const 
         candidates = m_llm_provider->PredictCandidates(context_copy, current_input_copy, 5);
         LlmDiag(request_seq, "done", candidates.size());
       }
+
+      candidates = CleanLlmCandidates(candidates);
+      LlmDiag(request_seq, "clean", candidates.size());
 
       if (request_seq != m_llm_request_seq.load()) {
         LlmDiag(request_seq, "discard-stale");
