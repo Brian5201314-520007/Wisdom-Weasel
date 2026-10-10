@@ -3,6 +3,7 @@
 #include <WeaselUtility.h>
 #include <windows.h>
 #include <functional>
+#include <mutex>
 #include <memory>
 #include <KeyEvent.h>
 
@@ -162,6 +163,8 @@ class Server {
   void SetRequestHandler(RequestHandler* pHandler);
   void AddMenuHandler(UINT uID, CommandHandler handler);
   HWND GetHWnd();
+  // 与 IPC 处理路径共用同一把 API 锁
+  std::mutex& ApiMutex();
 
  private:
   ServerImpl* m_pImpl;

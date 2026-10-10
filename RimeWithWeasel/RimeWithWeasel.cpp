@@ -5,6 +5,7 @@
 #include <WeaselConstants.h>
 #include <WeaselUtility.h>
 #include <FixedWMemStreamBuf.h>
+#include "LlmDiag.h"
 
 #include <filesystem>
 #include <map>
@@ -110,11 +111,22 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
 }
 
 RimeWithWeaselHandler::~RimeWithWeaselHandler() {
+  _StopLLM();
   m_show_notifications.clear();
   m_session_status_map.clear();
   m_app_options.clear();
 }
 
+void RimeWithWeaselHandler::_StopLLM() {
+  m_llm_shutdown.store(true);
+  LlmDiag(0, "shutdown-wait", static_cast<size_t>(m_llm_inflight.load()));
+  while (m_llm_inflight.load() > 0) {
+    Sleep(10);
+  }
+  std::lock_guard<std::mutex> run(m_llm_run_mutex);
+  m_llm_provider.reset();
+  LlmDiag(0, "shutdown-done");
+}
 bool add_session = false;
 void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize);
 bool _UpdateUIStyleColor(RimeConfig* config,
@@ -161,6 +173,8 @@ void RimeWithWeaselHandler::Initialize() {
   if (m_disabled) {
     return;
   }
+
+  _StopLLM();
 
   LOG(INFO) << "Initializing la rime.";
   rime_api->initialize(NULL);
@@ -260,12 +274,21 @@ void RimeWithWeaselHandler::Initialize() {
       LOG(INFO) << "LLM configuration not found (llm/enabled not set)";
     }
     
+    Bool diag = false;
+    if (rime_api->config_get_bool(&config, "llm/diagnostic_log", &diag)) {
+      LlmDiagEnabled().store(!!diag);
+    } else {
+      LlmDiagEnabled().store(false);
+    }
+
     rime_api->config_close(&config);
   }
   m_last_schema_id.clear();
+  m_llm_shutdown.store(false);
 }
 
 void RimeWithWeaselHandler::Finalize() {
+  _StopLLM();
   m_active_session = 0;
   m_disabled = true;
   m_session_status_map.clear();
@@ -2230,49 +2253,87 @@ void RimeWithWeaselHandler::_TriggerLLMPrediction(WeaselSessionId ipc_id, const 
   LOG(INFO) << "[LLM] Current input: " << wtou8(current_input);
   LOG(INFO) << "[LLM] Scheduling async LLMProvider::PredictCandidates";
 
+  m_llm_inflight.fetch_add(1);
+  if (m_llm_shutdown.load()) {
+    m_llm_inflight.fetch_sub(1);
+    return;
+  }
+
   // 生成新的请求序号，用于标记“最新一次”预测请求
   const uint64_t request_seq = ++m_llm_request_seq;
+  LlmDiag(request_seq, "queued");
 
   // 拷贝必要参数到后台线程
   std::wstring context_copy = context;
   std::wstring current_input_copy = current_input;
 
-  std::thread([this, ipc_id, request_seq, context_copy, current_input_copy]() {
-    // 后台线程中执行同步 PredictCandidates，不阻塞用户输入线程
-    LOG(INFO) << "[LLM] Async thread calling LLMProvider::PredictCandidates, seq=" << request_seq;
-    auto candidates = m_llm_provider->PredictCandidates(context_copy, current_input_copy, 5);
+  try {
+    std::thread([this, ipc_id, request_seq, context_copy, current_input_copy]() {
+      struct InflightGuard {
+        std::atomic<int>& n;
+        ~InflightGuard() { n.fetch_sub(1); }
+      } inflight_guard{m_llm_inflight};
 
-    // 如果有更新的请求已经发起，则丢弃本次结果
-    if (request_seq != m_llm_request_seq.load()) {
-      LOG(INFO) << "[LLM] Discarding stale LLM result, seq=" << request_seq
-                << ", latest_seq=" << m_llm_request_seq.load();
-      return;
-    }
+      std::vector<std::wstring> candidates;
+      {
+        std::lock_guard<std::mutex> run(m_llm_run_mutex);
+        if (m_llm_shutdown.load() || !m_llm_provider) {
+          LlmDiag(request_seq, "skip-shutdown");
+          return;
+        }
+        if (request_seq != m_llm_request_seq.load()) {
+          LlmDiag(request_seq, "skip-stale");
+          return;
+        }
+        LlmDiag(request_seq, "start");
+        candidates = m_llm_provider->PredictCandidates(context_copy, current_input_copy, 5);
+        LlmDiag(request_seq, "done", candidates.size());
+      }
 
-    // 将结果写入共享状态
-    {
-      std::lock_guard<std::mutex> lock(m_llm_mutex);
-      m_current_llm_candidates = std::move(candidates);
-    }
+      if (request_seq != m_llm_request_seq.load()) {
+        LlmDiag(request_seq, "discard-stale");
+        return;
+      }
 
-    size_t candidate_count = m_current_llm_candidates.size();
-    LOG(INFO) << "[LLM] Async LLMProvider returned " << candidate_count << " candidates, seq=" << request_seq;
+      std::unique_lock<std::mutex> api;
+      if (m_api_mutex) {
+        api = std::unique_lock<std::mutex>(*m_api_mutex, std::defer_lock);
+        while (!api.try_lock()) {
+          if (m_llm_shutdown.load()) return;
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+      }
+      if (m_llm_shutdown.load() || request_seq != m_llm_request_seq.load()) return;
 
-    if (m_dev_console && m_dev_console->IsEnabled()) {
-      std::wstringstream ss;
-      ss << L"[LLM] 异步预测完成，获得 " << candidate_count << L" 个候选词";
-      m_dev_console->WriteLine(ss.str());
-      m_dev_console->WriteLine(L"[LLM] ========== 预测结束 ==========");
-    }
+      // 在 API 鎖內寫入候選：pipe 執行緒都在這把鎖下讀取 m_current_llm_candidates
+      const size_t candidate_count = candidates.size();
+      {
+        std::lock_guard<std::mutex> lock(m_llm_mutex);
+        m_current_llm_candidates = std::move(candidates);
+      }
+      LOG(INFO) << "[LLM] Async LLMProvider returned " << candidate_count << " candidates, seq=" << request_seq;
 
-    // 更新UI显示LLM候选词
-    _UpdateUI(ipc_id);
-  }).detach();
+      if (m_dev_console && m_dev_console->IsEnabled()) {
+        std::wstringstream ss;
+        ss << L"[LLM] 异步预测完成，获得 " << candidate_count << L" 个候选词";
+        m_dev_console->WriteLine(ss.str());
+        m_dev_console->WriteLine(L"[LLM] ========== 预测结束 ==========");
+      }
+
+      _UpdateUI(ipc_id);
+      LlmDiag(request_seq, "ui");
+    }).detach();
+  } catch (...) {
+    m_llm_inflight.fetch_sub(1);
+  }
 }
 
 void RimeWithWeaselHandler::_ExitLLMPredictionMode(WeaselSessionId ipc_id) {
   m_llm_prediction_mode = false;
-  m_current_llm_candidates.clear();
+  {
+    std::lock_guard<std::mutex> lock(m_llm_mutex);
+    m_current_llm_candidates.clear();
+  }
   
   // 强制隐藏候选栏
   if (m_ui) {

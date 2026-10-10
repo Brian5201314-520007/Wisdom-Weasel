@@ -174,6 +174,10 @@ int ServerImpl::Stop() {
 
 static std::mutex g_api_mutex;
 
+std::mutex& Server::ApiMutex() {
+  return g_api_mutex;
+}
+
 int ServerImpl::Run() {
   // Guard against double Run invocation.
   if (m_listenThread.joinable()) {

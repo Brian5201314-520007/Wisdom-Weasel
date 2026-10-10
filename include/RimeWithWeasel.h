@@ -7,6 +7,7 @@
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <chrono>
 
 #include <rime_api.h>
 
@@ -88,6 +89,9 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
 
   void OnUpdateUI(std::function<void()> const& cb);
 
+  // 让背景 LLM 执行绪与 IPC 共用同一把 API 锁
+  void SetApiMutex(std::mutex* m) { m_api_mutex = m; }
+
   // 设置上下文历史记录实例
   void SetContextHistory(ContextHistory* context_history);
   
@@ -159,11 +163,15 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
 
   // LLM相关（上下文统一从 m_context_history 获取，不再单独维护 buffer）
   std::unique_ptr<LLMProvider> m_llm_provider;
-  bool m_llm_prediction_mode;
+  std::atomic<bool> m_llm_prediction_mode{false};
   std::vector<std::wstring> m_current_llm_candidates;
   std::wstring m_pending_llm_commit;  // 待提交的LLM候选词
   std::atomic<uint64_t> m_llm_request_seq{0};  // LLM异步预测请求序号（用于丢弃旧结果）
   std::mutex m_llm_mutex;                      // 保护 m_current_llm_candidates
+  std::mutex m_llm_run_mutex;                  // 序列化 LLM 推論，並保護 m_llm_provider
+  std::atomic<bool> m_llm_shutdown{false};
+  std::atomic<int> m_llm_inflight{0};
+  std::mutex* m_api_mutex = nullptr;
   
   // 双击·键检测（用于清空上下文）
   DWORD m_last_grave_key_time;  // 上次·键按下的时间（毫秒）
@@ -172,4 +180,5 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   // LLM预测相关方法
   void _TriggerLLMPrediction(WeaselSessionId ipc_id, const std::wstring& current_input = L"");
   void _ExitLLMPredictionMode(WeaselSessionId ipc_id);
+  void _StopLLM();
 };

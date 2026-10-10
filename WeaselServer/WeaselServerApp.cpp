@@ -31,6 +31,7 @@ int WeaselServerApp::Run() {
   m_ui.Create(m_server.GetHWnd());
 
   // 先初始化Rime（需要先initialize才能读取配置）
+  m_handler->SetApiMutex(&m_server.ApiMutex());
   m_handler->Initialize();
   
   // 初始化开发终端（需要在rime_api->initialize()之后，才能读取配置）
