@@ -147,9 +147,11 @@ dev_console:
 
 谢谢使用。
 
-## 覆蓋版安裝（v0.1.0，早期測試版）
+## 覆蓋版安裝（v0.1.1，早期測試版）
 
 本版本以「上游小狼毫 0.17.4 + 覆蓋包」的方式發佈，詳細步驟見 [INSTALL-OVERLAY.md](INSTALL-OVERLAY.md)。
+v0.1.1 修正了開啟 AI 預測後伺服器可能當掉的問題，並改用小鍵盤 1～5 與方向鍵選 AI 候選；更新內容與新設定見 INSTALL-OVERLAY.md。
+設定建議寫在 Rime 用戶目錄的 `weasel.custom.yaml`（patch 方式），而不是直接修改 `weasel.yaml`。
 下載請至 Release 頁面：<https://github.com/Brian5201314-520007/Wisdom-Weasel/releases>
 
 本倉庫為 [scukeqi/Wisdom-Weasel](https://github.com/scukeqi/Wisdom-Weasel) 的分支，LLM 預測功能由原作者開發；上游為 [rime/weasel](https://github.com/rime/weasel)。授權：GPLv3。

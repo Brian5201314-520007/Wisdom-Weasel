@@ -63,7 +63,7 @@ bool DevConsole::Initialize() {
 bool DevConsole::LoadConfig() {
   RimeApi* rime_api = rime_get_api();
   if (!rime_api) {
-    // rime_api未初始化，默认启用开发终端
+    // rime_api未初始化，默认禁用开发终端（fail-closed）
     m_enabled = false;
     return true;
   }
@@ -71,19 +71,19 @@ bool DevConsole::LoadConfig() {
   // 尝试打开weasel配置文件
   RimeConfig config = {NULL};
   if (!rime_api->config_open("weasel", &config)) {
-    // 配置文件打开失败，默认启用开发终端
+    // 配置文件打开失败，默认禁用开发终端（fail-closed）
     m_enabled = false;
     return true;
   }
 
-  Bool enabled = false;  // 默认值为true
+  Bool enabled = false;  // 默认值为false
   // 读取 dev_console/enabled 配置项
-  // 如果配置项存在且为false，则禁用开发终端
-  // 如果配置项不存在，默认启用（enabled保持为true）
+  // 仅当配置项存在且为true时启用开发终端
+  // 如果配置项不存在，默认禁用
   if (rime_api->config_get_bool(&config, "dev_console/enabled", &enabled)) {
     m_enabled = !!enabled;
   } else {
-    // 配置项不存在，默认启用
+    // 配置项不存在，默认禁用
     m_enabled = false;
   }
 
